@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.idea/
+venv/
+*.xlsx
+logs/
+candidates.csv
+purchase_history.csv
+lotto.csv
+keypad_debug.png
+cell_*.png
+*.iml
