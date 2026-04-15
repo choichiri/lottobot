@@ -202,6 +202,26 @@ def cmd_run(dry_run: bool = False):
     logger.info("파이프라인 완료")
 
 
+def cmd_check():
+    """당첨결과 확인 (토요일 추첨 후 실행)"""
+    from notification.telegram import send_error
+
+    logger.info("=" * 50)
+    logger.info("당첨결과 확인 시작")
+    logger.info("=" * 50)
+
+    try:
+        # 최신 당첨번호 가져오기
+        cmd_fetch()
+        # 이전 구매 결과 비교 + 텔레그램 알림
+        step_check_previous_results()
+    except Exception as e:
+        logger.error(f"결과 확인 오류: {e}", exc_info=True)
+        send_error(f"결과 확인 오류: {e}")
+
+    logger.info("당첨결과 확인 완료")
+
+
 def cmd_scheduler():
     """매주 자동 실행 데몬"""
     import schedule
@@ -230,7 +250,7 @@ def main():
     parser = argparse.ArgumentParser(description="로또 자동화 시스템")
     parser.add_argument(
         "command",
-        choices=["convert", "fetch", "analyze", "run", "scheduler"],
+        choices=["convert", "fetch", "analyze", "run", "check", "scheduler"],
         help="실행할 명령",
     )
     parser.add_argument(
@@ -245,6 +265,7 @@ def main():
         "fetch": cmd_fetch,
         "analyze": cmd_analyze,
         "run": lambda: cmd_run(dry_run=args.dry_run),
+        "check": cmd_check,
         "scheduler": cmd_scheduler,
     }
 
