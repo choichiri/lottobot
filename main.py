@@ -133,11 +133,9 @@ def step_purchase(target_round: int, final_sets: list[list[int]], dry_run: bool 
     from data.history import save_purchase
     from notification.telegram import send_purchase_report, send_error
 
-    # 구매 이력 저장 (구매 시도 전에 저장)
-    save_purchase(target_round, final_sets)
-
     if dry_run:
         logger.info("[dry-run] 실제 구매 건너뜀")
+        save_purchase(target_round, final_sets)
         send_purchase_report(target_round, final_sets, True)
         return True
 
@@ -162,6 +160,8 @@ def step_purchase(target_round: int, final_sets: list[list[int]], dry_run: bool 
                     return False
 
             success = buyer.purchase(final_sets)
+            if success:
+                save_purchase(target_round, final_sets)
             send_purchase_report(target_round, final_sets, success)
             return success
     except Exception as e:
