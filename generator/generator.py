@@ -22,8 +22,11 @@ from config.settings import (
 
 def generate_candidates(criteria: PredictionCriteria, count: int = NUM_CANDIDATES) -> list[list[int]]:
     """예측 조건을 만족하는 후보 번호 조합을 생성한다."""
-    odd_count, even_count = map(int, criteria.홀짝.split(":"))
-    high_count, low_count = map(int, criteria.고저.split(":"))
+    # 홀짝/고저 조합 리스트 생성
+    oe_hl_combos = []
+    for oe in criteria.홀짝:
+        for hl in criteria.고저:
+            oe_hl_combos.append((oe, hl))
 
     # 숫자 풀 분류
     odd_low = [n for n in range(1, 23) if n % 2 == 1]
@@ -36,6 +39,10 @@ def generate_candidates(criteria: PredictionCriteria, count: int = NUM_CANDIDATE
 
     while len(results) < count and attempts < MAX_GENERATION_ATTEMPTS:
         attempts += 1
+        oe, hl = random.choice(oe_hl_combos)
+        odd_count, even_count = map(int, oe.split(":"))
+        high_count, low_count = map(int, hl.split(":"))
+
         nums = _stratified_sample(
             odd_count, even_count, high_count, low_count,
             odd_low, even_low, odd_high, even_high,
