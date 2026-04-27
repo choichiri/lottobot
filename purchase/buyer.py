@@ -266,18 +266,17 @@ class LottoBuyer:
             self._close_popups()
             time.sleep(1)
 
+            # iframe 안에 구매 UI가 있을 수 있음 - 자동 진입
+            self._switch_to_purchase_iframe()
+
             for i, nums in enumerate(number_sets):
                 logger.info(f"[{i+1}세트] 번호 선택: {nums}")
                 for num in nums:
-                    # label[for="check645num{N}"] 클릭 (체크박스 방식)
-                    label = self.driver.find_element(
-                        By.CSS_SELECTOR, f'label[for="check645num{num}"]'
-                    )
-                    label.click()
+                    self._click_number_label(num)
                     time.sleep(0.1)
 
                 # 확인 버튼 클릭 (#btnSelectNum)
-                self.driver.find_element(By.ID, "btnSelectNum").click()
+                self._safe_click(By.ID, "btnSelectNum")
                 time.sleep(0.5)
 
             if dry_run:
@@ -285,7 +284,7 @@ class LottoBuyer:
                 return True
 
             # 구매하기 버튼 클릭
-            self.driver.find_element(By.ID, "btnBuy").click()
+            self._safe_click(By.ID, "btnBuy")
             time.sleep(1)
 
             # 구매 확인 팝업 - "확인" 클릭
@@ -298,6 +297,42 @@ class LottoBuyer:
         except Exception as e:
             logger.error(f"구매 중 오류: {e}")
             return False
+
+    def _switch_to_purchase_iframe(self):
+        """구매 페이지의 번호 선택 iframe으로 전환한다 (있을 경우)."""
+        try:
+            iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+            for iframe in iframes:
+                try:
+                    self.driver.switch_to.frame(iframe)
+                    if self.driver.find_elements(By.CSS_SELECTOR, 'label[for^="check645num"]'):
+                        logger.info("구매 iframe으로 전환됨")
+                        return
+                    self.driver.switch_to.default_content()
+                except Exception:
+                    self.driver.switch_to.default_content()
+        except Exception:
+            pass
+
+    def _click_number_label(self, num: int):
+        """번호 label을 클릭한다 (intercepted 시 JS click 폴백)."""
+        label = self.driver.find_element(By.CSS_SELECTOR, f'label[for="check645num{num}"]')
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", label)
+            time.sleep(0.05)
+            label.click()
+        except Exception:
+            self.driver.execute_script("arguments[0].click();", label)
+
+    def _safe_click(self, by, value):
+        """일반 click 실패 시 JS click으로 폴백한다."""
+        el = self.driver.find_element(by, value)
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+            time.sleep(0.05)
+            el.click()
+        except Exception:
+            self.driver.execute_script("arguments[0].click();", el)
 
     def _close_popups(self):
         """사이트 팝업/모달을 닫는다."""
