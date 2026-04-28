@@ -161,15 +161,78 @@ class LottoBuyer:
             success = self._enter_pin(DEPOSIT_PIN)
             if not success:
                 logger.error("비밀번호 입력 실패")
+                self._dump_charge_state("pin_fail")
                 return False
 
+            time.sleep(2)
+
+            # PIN 입력 후 확인/충전 버튼 클릭 시도 (사이트별로 명칭 다양)
+            self._click_charge_confirm()
+
+            # alert/confirm 팝업 처리
+            self._accept_alerts()
+
             time.sleep(5)
+            self._dump_charge_state("after_charge")
             logger.info(f"예치금 {amount:,}원 충전 요청 완료")
             return True
 
         except Exception as e:
             logger.error(f"예치금 충전 중 오류: {e}")
+            self._dump_charge_state("exception")
             return False
+
+    def _click_charge_confirm(self):
+        """PIN 입력 후 등장하는 확인 버튼이 있으면 클릭."""
+        candidates = [
+            (By.CSS_SELECTOR, "button.btn_chrg_ok"),
+            (By.CSS_SELECTOR, "button[onclick*='ChrgOk']"),
+            (By.CSS_SELECTOR, "button[onclick*='charge']"),
+            (By.CSS_SELECTOR, "a.btn_chrg_ok"),
+            (By.XPATH, "//button[contains(text(),'충전하기')]"),
+            (By.XPATH, "//a[contains(text(),'충전하기')]"),
+            (By.XPATH, "//button[contains(text(),'확인')]"),
+            (By.XPATH, "//a[contains(text(),'확인')]"),
+        ]
+        for by, sel in candidates:
+            try:
+                els = self.driver.find_elements(by, sel)
+                for el in els:
+                    if el.is_displayed():
+                        try:
+                            el.click()
+                        except Exception:
+                            self.driver.execute_script("arguments[0].click();", el)
+                        logger.info(f"확인 버튼 클릭: {sel}")
+                        time.sleep(2)
+                        return
+            except Exception:
+                continue
+
+    def _accept_alerts(self):
+        """JS alert/confirm 팝업이 떠있으면 모두 수락."""
+        for _ in range(3):
+            try:
+                alert = self.driver.switch_to.alert
+                logger.info(f"알림창 감지: {alert.text}")
+                alert.accept()
+                time.sleep(1)
+            except Exception:
+                break
+
+    def _dump_charge_state(self, tag: str):
+        """충전 흐름 디버깅용: 스크린샷 + 페이지 텍스트 일부 저장."""
+        try:
+            import os
+            base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            shot = os.path.join(base, f"charge_{tag}.png")
+            self.driver.save_screenshot(shot)
+            url = self.driver.current_url
+            body = self.driver.find_element(By.TAG_NAME, "body").text[:500]
+            logger.info(f"[charge state:{tag}] url={url}")
+            logger.info(f"[charge state:{tag}] body={body!r}")
+        except Exception as e:
+            logger.warning(f"디버그 덤프 실패: {e}")
 
     def _enter_pin(self, pin: str) -> bool:
         """NProtect 보안 키패드에서 OCR로 숫자 위치를 파악하여 비밀번호를 입력한다.
