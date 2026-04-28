@@ -301,18 +301,14 @@ class LottoBuyer:
             if len(digit_positions) < 10:
                 logger.warning(f"OCR 인식 부족: {len(digit_positions)}/10개만 인식됨")
 
-            # 각 PIN 숫자 클릭
-            from selenium.webdriver.common.action_chains import ActionChains
+            # 각 PIN 숫자 클릭 - CDP로 절대좌표에 진짜 마우스 이벤트 전송
             for digit in pin:
                 if digit not in digit_positions:
                     logger.error(f"키패드에서 숫자 '{digit}'를 OCR로 인식하지 못함")
                     return False
                 cx, cy = digit_positions[digit]
-                ActionChains(self.driver).move_to_element_with_offset(
-                    keypad_img_el, cx - keypad_img_el.size["width"] // 2,
-                    cy - keypad_img_el.size["height"] // 2
-                ).click().perform()
-                time.sleep(0.5)
+                self._dispatch_real_click(keypad_img_el, cx, cy)
+                time.sleep(0.4)
 
             logger.info("비밀번호 입력 완료")
             return True
@@ -320,6 +316,44 @@ class LottoBuyer:
         except Exception as e:
             logger.error(f"키패드 OCR 입력 오류: {e}")
             return False
+
+    def _dispatch_real_click(self, element, offset_x: int, offset_y: int):
+        """element 내부 (offset_x, offset_y) 위치에 실제 마우스 클릭 이벤트를 발생시킨다.
+        ActionChains가 동작하지 않는 보안 키패드용. CDP 우선, 실패 시 JS dispatchEvent 폴백.
+        """
+        rect = self.driver.execute_script(
+            "return arguments[0].getBoundingClientRect();", element
+        )
+        abs_x = float(rect["left"]) + offset_x
+        abs_y = float(rect["top"]) + offset_y
+
+        # 1순위: CDP로 진짜 마우스 이벤트
+        try:
+            self.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                "type": "mouseMoved", "x": abs_x, "y": abs_y, "button": "none",
+            })
+            self.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                "type": "mousePressed", "x": abs_x, "y": abs_y,
+                "button": "left", "clickCount": 1,
+            })
+            self.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                "type": "mouseReleased", "x": abs_x, "y": abs_y,
+                "button": "left", "clickCount": 1,
+            })
+            return
+        except Exception as e:
+            logger.warning(f"CDP 클릭 실패, JS 폴백: {e}")
+
+        # 2순위: JS로 합성 이벤트 dispatch
+        self.driver.execute_script("""
+            const el = arguments[0];
+            const x = arguments[1];
+            const y = arguments[2];
+            const opts = {clientX: x, clientY: y, bubbles: true, cancelable: true, view: window};
+            ['mousedown', 'mouseup', 'click'].forEach(type => {
+                el.dispatchEvent(new MouseEvent(type, opts));
+            });
+        """, element, abs_x, abs_y)
 
     def purchase(self, number_sets: list[list[int]], dry_run: bool = False) -> bool:
         """로또 번호를 선택하고 구매한다."""
