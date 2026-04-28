@@ -179,10 +179,16 @@ class LottoBuyer:
         - 행 3: 전체삭제 / 나머지 숫자 1개 / 삭제(x)
         """
         import io
+        import os
+        import platform
         from PIL import Image
         import pytesseract
 
-        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        # OS별 tesseract 경로 자동 설정 (Windows는 기본 설치 경로, 리눅스는 PATH 사용)
+        if platform.system() == "Windows":
+            win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+            if os.path.exists(win_path):
+                pytesseract.pytesseract.tesseract_cmd = win_path
 
         try:
             time.sleep(2)
