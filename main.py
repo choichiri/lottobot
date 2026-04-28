@@ -63,6 +63,7 @@ def cmd_fetch():
 
 def cmd_analyze():
     """패턴 분석 + 번호 생성 (100개 후보 + 5개 선택)"""
+    import random
     from data.store import load_data, get_latest_round
     from analysis.predictor import predict_next_criteria
     from generator.generator import (
@@ -75,6 +76,9 @@ def cmd_analyze():
     target_round = latest_round + 1
     logger.info(f"데이터: {len(df)}회차 (최신: {latest_round}회)")
     logger.info(f"대상 회차: {target_round}회")
+
+    # 회차별 시드 고정 (같은 회차는 항상 같은 결과)
+    random.seed(target_round)
 
     # 예측 조건 도출
     criteria = predict_next_criteria(df)

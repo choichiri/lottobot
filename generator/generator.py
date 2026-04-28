@@ -107,52 +107,45 @@ def load_candidates(target_round: int | None = None) -> list[list[int]]:
 
 
 def select_final_sets(candidates: list[list[int]], num_sets: int = NUM_SETS) -> list[list[int]]:
-    """100개 후보에서 가중치 기반으로 5세트를 최종 선택한다.
+    """100개 후보에서 다양성 기반으로 5세트를 최종 선택한다.
 
     선택 전략:
-    1. 각 번호(1~45)의 후보 내 출현 빈도를 계산
-    2. 각 조합의 점수 = 소속 번호들의 출현빈도 합
-    3. 빈도가 높은 번호를 포함한 조합이 높은 점수 -> 자주 추천되는 번호 위주
-    4. 상위 점수 조합들 중 번호 다양성을 고려하여 5세트 선택
+    1. 후보를 무작위로 섞음
+    2. 첫 세트는 무조건 선택
+    3. 이후 세트는 이미 선택된 세트들과의 번호 중복(overlap)이 적은 것 우선
+    4. 5개 못 채우면 남은 후보에서 순서대로 추가
     """
     if len(candidates) <= num_sets:
         return candidates
 
-    # 번호별 출현 빈도
-    freq = Counter()
-    for nums in candidates:
-        for n in nums:
-            freq[n] += 1
+    shuffled = candidates[:]
+    random.shuffle(shuffled)
 
-    # 각 조합의 점수 계산
-    scored = []
-    for i, nums in enumerate(candidates):
-        score = sum(freq[n] for n in nums)
-        scored.append((i, score, nums))
+    selected = [shuffled[0]]
+    used_numbers = Counter(shuffled[0])
 
-    # 점수 내림차순 정렬
-    scored.sort(key=lambda x: -x[1])
-
-    # 다양성을 고려한 선택: 이미 선택된 세트와 번호 중복이 적은 것 우선
-    selected = []
-    used_numbers = Counter()
-
-    for _, score, nums in scored:
+    # overlap 임계치를 점진적으로 완화하며 다양성 우선 선택
+    for threshold in (2, 3, 4, 5):
+        for nums in shuffled[1:]:
+            if len(selected) >= num_sets:
+                break
+            if nums in selected:
+                continue
+            overlap = sum(used_numbers[n] for n in nums)
+            if overlap <= threshold:
+                selected.append(nums)
+                for n in nums:
+                    used_numbers[n] += 1
         if len(selected) >= num_sets:
             break
-        # 이미 선택된 세트와의 중복도 체크
-        overlap = sum(used_numbers[n] for n in nums)
-        # 상위 점수 조합 중 중복이 적으면 선택
-        if overlap <= 3 or len(selected) < 2:
-            selected.append(nums)
-            for n in nums:
-                used_numbers[n] += 1
 
-    # 부족하면 나머지에서 랜덤 추가
+    # 그래도 부족하면 남은 후보로 채움
     if len(selected) < num_sets:
-        remaining = [nums for _, _, nums in scored if nums not in selected]
-        random.shuffle(remaining)
-        selected.extend(remaining[:num_sets - len(selected)])
+        for nums in shuffled:
+            if nums not in selected:
+                selected.append(nums)
+                if len(selected) >= num_sets:
+                    break
 
     print(f"[generator] 최종 {len(selected)}세트 선택 완료")
     return selected
