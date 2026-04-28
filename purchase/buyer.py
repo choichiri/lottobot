@@ -258,6 +258,30 @@ class LottoBuyer:
 
             # 키패드 이미지 요소
             keypad_img_el = self.driver.find_element(By.CSS_SELECTOR, ".kpd-image-button")
+
+            # 디버깅: 키패드 영역의 HTML 구조 + 좌표 정보 덤프
+            try:
+                rect = self.driver.execute_script(
+                    "return arguments[0].getBoundingClientRect();", keypad_img_el
+                )
+                logger.info(f"[keypad] tag={keypad_img_el.tag_name} size={keypad_img_el.size} location={keypad_img_el.location}")
+                logger.info(f"[keypad] rect={rect}")
+                logger.info(f"[keypad] device_pixel_ratio={self.driver.execute_script('return window.devicePixelRatio;')}")
+                # 키패드 컨테이너의 자식 요소들 확인
+                container_html = self.driver.execute_script("""
+                    let el = arguments[0];
+                    let parent = el.parentElement;
+                    return {
+                        outerTag: el.outerHTML.substring(0, 300),
+                        parentTag: parent ? parent.tagName : null,
+                        parentChildren: parent ? Array.from(parent.children).map(c => c.tagName + '.' + c.className).join(', ') : null,
+                        siblings: Array.from(el.parentElement?.children || []).filter(c => c !== el).map(c => c.tagName + '.' + c.className + '#' + c.id).join(' | ')
+                    };
+                """, keypad_img_el)
+                logger.info(f"[keypad] structure={container_html}")
+            except Exception as e:
+                logger.warning(f"키패드 구조 덤프 실패: {e}")
+
             img_bytes = keypad_img_el.screenshot_as_png
             img = Image.open(io.BytesIO(img_bytes))
 
