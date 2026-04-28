@@ -343,15 +343,46 @@ class LottoBuyer:
 
     def _dispatch_real_click(self, element, offset_x: int, offset_y: int):
         """element 내부 (offset_x, offset_y) 위치에 실제 마우스 클릭 이벤트를 발생시킨다.
-        ActionChains가 동작하지 않는 보안 키패드용. CDP 우선, 실패 시 JS dispatchEvent 폴백.
+        NProtect 보안 키패드용으로 W3C ActionBuilder + Touch 이벤트 + CDP 다중 시도.
         """
         rect = self.driver.execute_script(
             "return arguments[0].getBoundingClientRect();", element
         )
-        abs_x = float(rect["left"]) + offset_x
-        abs_y = float(rect["top"]) + offset_y
+        abs_x = int(float(rect["left"]) + offset_x)
+        abs_y = int(float(rect["top"]) + offset_y)
 
-        # 1순위: CDP로 진짜 마우스 이벤트
+        # 1순위: W3C ActionBuilder (Selenium 4 표준 PointerEvents)
+        try:
+            from selenium.webdriver.common.actions.action_builder import ActionBuilder
+            from selenium.webdriver.common.actions.pointer_input import PointerInput
+            from selenium.webdriver.common.actions.interaction import POINTER_MOUSE
+
+            actions = ActionBuilder(
+                self.driver,
+                mouse=PointerInput(POINTER_MOUSE, "mouse"),
+            )
+            actions.pointer_action.move_to_location(abs_x, abs_y)
+            actions.pointer_action.pointer_down()
+            actions.pointer_action.pause(0.05)
+            actions.pointer_action.pointer_up()
+            actions.perform()
+        except Exception as e:
+            logger.warning(f"ActionBuilder 실패: {e}")
+
+        # 2순위: CDP Touch 이벤트 (모바일 키패드 호환)
+        try:
+            self.driver.execute_cdp_cmd("Input.dispatchTouchEvent", {
+                "type": "touchStart",
+                "touchPoints": [{"x": abs_x, "y": abs_y, "id": 0}],
+            })
+            self.driver.execute_cdp_cmd("Input.dispatchTouchEvent", {
+                "type": "touchEnd",
+                "touchPoints": [],
+            })
+        except Exception:
+            pass
+
+        # 3순위: CDP 마우스 이벤트
         try:
             self.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
                 "type": "mouseMoved", "x": abs_x, "y": abs_y, "button": "none",
@@ -364,20 +395,26 @@ class LottoBuyer:
                 "type": "mouseReleased", "x": abs_x, "y": abs_y,
                 "button": "left", "clickCount": 1,
             })
-            return
-        except Exception as e:
-            logger.warning(f"CDP 클릭 실패, JS 폴백: {e}")
+        except Exception:
+            pass
 
-        # 2순위: JS로 합성 이벤트 dispatch
-        self.driver.execute_script("""
-            const el = arguments[0];
-            const x = arguments[1];
-            const y = arguments[2];
-            const opts = {clientX: x, clientY: y, bubbles: true, cancelable: true, view: window};
-            ['mousedown', 'mouseup', 'click'].forEach(type => {
-                el.dispatchEvent(new MouseEvent(type, opts));
-            });
-        """, element, abs_x, abs_y)
+        # 4순위: JS 합성 이벤트 (PointerEvent + MouseEvent)
+        try:
+            self.driver.execute_script("""
+                const el = arguments[0];
+                const x = arguments[1];
+                const y = arguments[2];
+                const opts = {clientX: x, clientY: y, bubbles: true, cancelable: true, view: window, button: 0};
+                if (window.PointerEvent) {
+                    el.dispatchEvent(new PointerEvent('pointerdown', {...opts, pointerType: 'mouse'}));
+                    el.dispatchEvent(new PointerEvent('pointerup', {...opts, pointerType: 'mouse'}));
+                }
+                ['mousedown', 'mouseup', 'click'].forEach(type => {
+                    el.dispatchEvent(new MouseEvent(type, opts));
+                });
+            """, element, abs_x, abs_y)
+        except Exception:
+            pass
 
     def purchase(self, number_sets: list[list[int]], dry_run: bool = False) -> bool:
         """로또 번호를 선택하고 구매한다."""
